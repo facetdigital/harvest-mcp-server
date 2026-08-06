@@ -110,21 +110,37 @@ class GuardStructureTest(unittest.TestCase):
 
     @staticmethod
     def non_get_methods(node):
+        """Collect non-GET methods from harvest_request calls in node.
+
+        The method may arrive as the third positional argument or as the
+        `method` keyword. Anything that is not a string literal fails
+        loudly: silently classifying an unrecognized form as GET would let
+        an unguarded write tool slip past this suite's coverage claim.
+        """
         methods = []
         for call in ast.walk(node):
-            if (
+            if not (
                 isinstance(call, ast.Call)
                 and isinstance(call.func, ast.Name)
                 and call.func.id == "harvest_request"
             ):
-                method = "GET"
-                for keyword in call.keywords:
-                    if keyword.arg == "method" and isinstance(
-                        keyword.value, ast.Constant
-                    ):
-                        method = keyword.value.value
-                if method != "GET":
-                    methods.append(method)
+                continue
+            method_node = call.args[2] if len(call.args) >= 3 else None
+            for keyword in call.keywords:
+                if keyword.arg == "method":
+                    method_node = keyword.value
+            if method_node is None:
+                continue
+            if not (
+                isinstance(method_node, ast.Constant)
+                and isinstance(method_node.value, str)
+            ):
+                raise AssertionError(
+                    f"{node.name} passes a non-literal method to "
+                    "harvest_request; guard coverage cannot be verified"
+                )
+            if method_node.value != "GET":
+                methods.append(method_node.value)
         return methods
 
     def test_every_writing_tool_is_listed_and_guarded(self):
