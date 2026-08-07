@@ -35,9 +35,15 @@ branch and draft PR #2.
 **Goal:** Define a durable branching model that lets this fork continuously
 pull from upstream, submit clean PRs upstream, and keep fork-private changes
 (operating docs, configs, possibly private tools) in source control without
-ever leaking them into upstream submissions. Should replace today's ad hoc
-"run from a feature branch and remember what to exclude" arrangement.
-Sequenced after live validation of the new tools. [Needs Planning]
+ever leaking them into upstream submissions. Mirror `main` plus long-lived
+`facet` operating branch, with committed check/build scripts making the
+never-leak rule mechanical.
+
+**Plan:** `docs/plans/fork-branching-strategy.md` [Plan Ready]
+
+**Status:** Ready to implement. Sequenced after live validation of the new
+tools; its Step 6 subsumes the "Upstream submission and sync" item's
+branch-building work.
 
 ### Allowlist runtime backstop
 
