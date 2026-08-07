@@ -32,6 +32,78 @@ READ_ONLY_MESSAGE = json.dumps(
     indent=2,
 )
 
+# Every tool that can mutate Harvest data. A write tool must appear here and
+# must call write_refusal() before making any request; the tests enforce both.
+WRITE_TOOLS = frozenset(
+    {
+        "create_time_entry",
+        "update_time_entry",
+        "delete_time_entry",
+        "start_timer",
+        "stop_timer",
+        "create_project",
+        "update_project",
+        "delete_project",
+        "create_task_assignment",
+        "update_task_assignment",
+        "delete_task_assignment",
+        "create_user_assignment",
+        "update_user_assignment",
+        "delete_user_assignment",
+        "create_estimate",
+        "update_estimate",
+        "delete_estimate",
+        "change_estimate_state",
+        "send_estimate_message",
+    }
+)
+
+# Optional allowlist restricting which write tools may act. Unset means all
+# write tools are allowed (subject to HARVEST_READ_ONLY). When set, any write
+# tool not named refuses before making a network call. The list fails closed:
+# a write tool added later is denied until deliberately added here.
+_raw_write_tools = os.environ.get("HARVEST_WRITE_TOOLS")
+if _raw_write_tools is None:
+    HARVEST_ALLOWED_WRITE_TOOLS = None
+else:
+    HARVEST_ALLOWED_WRITE_TOOLS = frozenset(
+        name.strip() for name in _raw_write_tools.split(",") if name.strip()
+    )
+    _unknown_tools = HARVEST_ALLOWED_WRITE_TOOLS - WRITE_TOOLS
+    if _unknown_tools:
+        raise ValueError(
+            "HARVEST_WRITE_TOOLS contains unknown tool name(s): "
+            f"{', '.join(sorted(_unknown_tools))}. "
+            f"Valid write tools: {', '.join(sorted(WRITE_TOOLS))}"
+        )
+
+
+def write_refusal(tool_name):
+    """Return a refusal payload if tool_name may not write, else None.
+
+    Every write tool calls this before building its request, so refusals
+    happen before any network activity.
+    """
+    if HARVEST_READ_ONLY:
+        return READ_ONLY_MESSAGE
+    if (
+        HARVEST_ALLOWED_WRITE_TOOLS is not None
+        and tool_name not in HARVEST_ALLOWED_WRITE_TOOLS
+    ):
+        allowed = ", ".join(sorted(HARVEST_ALLOWED_WRITE_TOOLS)) or "(none)"
+        return json.dumps(
+            {
+                "error": "write_not_allowed",
+                "message": (
+                    f"The tool '{tool_name}' is not in this server's "
+                    "HARVEST_WRITE_TOOLS allowlist. "
+                    f"Allowed write tools: {allowed}."
+                ),
+            },
+            indent=2,
+        )
+    return None
+
 
 # Helper function to make Harvest API requests
 async def harvest_request(path, params=None, method="GET"):
@@ -44,13 +116,21 @@ async def harvest_request(path, params=None, method="GET"):
 
     url = f"https://api.harvestapp.com/v2/{path}"
 
+    # Structural backstop: the per-tool guards refuse politely first, but a
+    # write tool missing its guard must still be unable to write in
+    # read-only mode.
+    if method != "GET" and HARVEST_READ_ONLY:
+        raise Exception(
+            f"Refusing {method} {path}: HARVEST_READ_ONLY is set"
+        )
+
     async with httpx.AsyncClient() as client:
         if method == "GET":
             response = await client.get(url, headers=headers, params=params)
         else:
             response = await client.request(method, url, headers=headers, json=params)
 
-        if response.status_code not in (200, 201):
+        if response.status_code not in (200, 201, 204):
             raise Exception(
                 f"Harvest API Error: {response.status_code} {response.text}"
             )
@@ -150,8 +230,9 @@ async def create_time_entry(
         hours: The number of hours spent
         notes: Optional notes about the time entry
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("create_time_entry")
+    if refusal:
+        return refusal
 
     params = {
         "project_id": project_id,
@@ -174,8 +255,9 @@ async def stop_timer(time_entry_id: int):
     Args:
         time_entry_id: The ID of the running time entry to stop
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("stop_timer")
+    if refusal:
+        return refusal
 
     response = await harvest_request(
         f"time_entries/{time_entry_id}/stop", method="PATCH"
@@ -196,8 +278,9 @@ async def start_timer(
         task_id: The ID of the task to associate with the time entry
         notes: Optional notes about the time entry
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("start_timer")
+    if refusal:
+        return refusal
 
     params = {
         "project_id": project_id,
@@ -209,6 +292,71 @@ async def start_timer(
         params["notes"] = str(notes)
 
     response = await harvest_request("time_entries", params, method="POST")
+    return json.dumps(response, indent=2)
+
+
+@mcp.tool()
+async def update_time_entry(
+    time_entry_id: int,
+    project_id: int = None,
+    task_id: int = None,
+    spent_date: str = None,
+    hours: float = None,
+    notes: str | int | None = None,
+):
+    """Update an existing time entry.
+
+    Only the parameters you provide are changed; omitted parameters
+    remain untouched. Providing only task_id re-tasks the entry without
+    touching its hours, date, or notes.
+
+    Args:
+        time_entry_id: The ID of the time entry to update
+        project_id: The ID of the project to associate with the time entry
+        task_id: The ID of the task to associate with the time entry
+        spent_date: The date when the time was spent (YYYY-MM-DD)
+        hours: The number of hours spent
+        notes: Notes about the time entry
+    """
+    refusal = write_refusal("update_time_entry")
+    if refusal:
+        return refusal
+
+    params = {}
+    if project_id is not None:
+        params["project_id"] = project_id
+    if task_id is not None:
+        params["task_id"] = task_id
+    if spent_date is not None:
+        params["spent_date"] = spent_date
+    if hours is not None:
+        params["hours"] = hours
+    if notes is not None:
+        params["notes"] = str(notes)
+
+    response = await harvest_request(
+        f"time_entries/{time_entry_id}", params, method="PATCH"
+    )
+    return json.dumps(response, indent=2)
+
+
+@mcp.tool()
+async def delete_time_entry(time_entry_id: int):
+    """Delete a time entry.
+
+    Deletion is permanent. To correct an entry's hours, task, project,
+    date, or notes, prefer update_time_entry.
+
+    Args:
+        time_entry_id: The ID of the time entry to delete
+    """
+    refusal = write_refusal("delete_time_entry")
+    if refusal:
+        return refusal
+
+    response = await harvest_request(
+        f"time_entries/{time_entry_id}", method="DELETE"
+    )
     return json.dumps(response, indent=2)
 
 
@@ -343,8 +491,9 @@ async def create_project(
         starts_on: Date the project was started (YYYY-MM-DD)
         ends_on: Date the project will end (YYYY-MM-DD)
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("create_project")
+    if refusal:
+        return refusal
 
     params = {
         "client_id": client_id,
@@ -489,8 +638,9 @@ async def update_project(
         starts_on: Date the project was started (YYYY-MM-DD)
         ends_on: Date the project will end (YYYY-MM-DD)
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("update_project")
+    if refusal:
+        return refusal
 
     params = {}
     if client_id is not None:
@@ -552,8 +702,9 @@ async def delete_project(project_id: int):
     Args:
         project_id: The ID of the project to delete
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("delete_project")
+    if refusal:
+        return refusal
 
     response = await harvest_request(f"projects/{project_id}", method="DELETE")
     return json.dumps(response, indent=2)
@@ -664,8 +815,9 @@ async def create_task_assignment(
             budget_by is "task" or "task_fees". Silently nulled in the
             response if budget_by is any other value — no error raised
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("create_task_assignment")
+    if refusal:
+        return refusal
 
     params = {"task_id": task_id}
     if is_active is not None:
@@ -711,8 +863,9 @@ async def update_task_assignment(
             budget_by is "task" or "task_fees". Silently nulled in the
             response if budget_by is any other value — no error raised
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("update_task_assignment")
+    if refusal:
+        return refusal
 
     params = {}
     if is_active is not None:
@@ -748,8 +901,9 @@ async def delete_task_assignment(project_id: int, task_assignment_id: int):
         project_id: The ID of the project the task assignment belongs to
         task_assignment_id: The ID of the task assignment to delete
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("delete_task_assignment")
+    if refusal:
+        return refusal
 
     response = await harvest_request(
         f"projects/{project_id}/task_assignments/{task_assignment_id}",
@@ -869,8 +1023,9 @@ async def create_user_assignment(
             budget_by is "person". Silently nulled in the response if
             budget_by is any other value — no error raised
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("create_user_assignment")
+    if refusal:
+        return refusal
 
     params = {"user_id": user_id}
     if is_active is not None:
@@ -924,8 +1079,9 @@ async def update_user_assignment(
             budget_by is "person". Silently nulled in the response if
             budget_by is any other value — no error raised
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("update_user_assignment")
+    if refusal:
+        return refusal
 
     params = {}
     if is_active is not None:
@@ -965,8 +1121,9 @@ async def delete_user_assignment(project_id: int, user_assignment_id: int):
         project_id: The ID of the project the user assignment belongs to
         user_assignment_id: The ID of the user assignment to delete
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("delete_user_assignment")
+    if refusal:
+        return refusal
 
     response = await harvest_request(
         f"projects/{project_id}/user_assignments/{user_assignment_id}",
@@ -1250,8 +1407,9 @@ async def create_estimate(
             - taxed (boolean, optional, defaults to false): Whether tax applies
             - taxed2 (boolean, optional, defaults to false): Whether tax2 applies
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("create_estimate")
+    if refusal:
+        return refusal
 
     params = {"client_id": client_id}
     if number is not None:
@@ -1323,8 +1481,9 @@ async def update_estimate(
               "_destroy": true
             Items not referenced in the request are left untouched.
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("update_estimate")
+    if refusal:
+        return refusal
 
     params = {}
     if client_id is not None:
@@ -1371,8 +1530,9 @@ async def change_estimate_state(estimate_id: int, event_type: str):
             - "decline": mark a sent estimate as declined (closes it)
             - "re-open": reopen a closed (accepted/declined) estimate back to sent
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("change_estimate_state")
+    if refusal:
+        return refusal
 
     params = {"event_type": event_type}
     response = await harvest_request(
@@ -1415,8 +1575,9 @@ async def send_estimate_message(
         event_type: Optionally also run a state transition alongside the email.
             One of: "send", "accept", "decline", "re-open".
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("send_estimate_message")
+    if refusal:
+        return refusal
 
     params = {"recipients": recipients}
     if subject is not None:
@@ -1443,8 +1604,9 @@ async def delete_estimate(estimate_id: int):
             (e.g. 4019251), NOT the user-facing number ("79"). Use
             get_estimate_by_number if you only have the number.
     """
-    if HARVEST_READ_ONLY:
-        return READ_ONLY_MESSAGE
+    refusal = write_refusal("delete_estimate")
+    if refusal:
+        return refusal
 
     response = await harvest_request(f"estimates/{estimate_id}", method="DELETE")
     return json.dumps(response, indent=2)
