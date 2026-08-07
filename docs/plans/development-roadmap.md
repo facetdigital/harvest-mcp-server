@@ -51,7 +51,9 @@ branch-building work.
 `HARVEST_WRITE_TOOLS` gains a central enforcement layer symmetric with
 read-only mode. Today the allowlist is enforced per-tool plus a structural
 test; read-only is enforced per-tool plus centrally. A deliberate, recorded
-asymmetry worth closing. [Needs Planning]
+asymmetry worth closing.
+
+**Plan:** `docs/plans/allowlist-runtime-backstop.md` [Plan Ready]
 
 ### Dependency hygiene pass
 
@@ -60,21 +62,26 @@ refresh `uv.lock` to clear stale pins (h11 past its CVE fix, newer mcp 1.x),
 pin the Dockerfile base images by digest, and add a `.dockerignore`. One
 deliberate commit, kept off the critical path of feature work because it is
 the one change that can break the server rather than extend it.
-[Needs Planning]
+
+**Plan:** `docs/plans/dependency-hygiene.md` [Plan Ready]
 
 ### MCP tool annotations
 
 **Goal:** Add `readOnlyHint` / `destructiveHint` annotations to all 36 tools
 so MCP clients can distinguish destructive tools programmatically. Depends on
 the dependency hygiene pass (requires an mcp SDK newer than the pinned
-1.4.1). [Needs Planning]
+1.4.1).
+
+**Plan:** `docs/plans/mcp-tool-annotations.md` [Plan Ready]
 
 ### Extend test coverage to pre-existing tools
 
 **Goal:** Pin request-building behavior of the read tools and the
 pre-existing write tools, so upstream merges can be verified mechanically
 instead of by re-reading the diff. The guard-coverage and passthrough tests
-are the seed; this grows them toward full-surface coverage. [Needs Planning]
+are the seed; this grows them toward full-surface coverage.
+
+**Plan:** `docs/plans/extend-test-coverage.md` [Plan Ready]
 
 ---
 
