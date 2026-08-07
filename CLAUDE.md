@@ -15,12 +15,19 @@ enforcement in `harvest_request`, and the test suite under `tests/`.
 The branch is pushed to origin and parked in **draft PR #2**, assigned to
 Scott, intentionally unmerged.
 
+## Roadmap
+
+The fork's forward plan lives at `docs/plans/development-roadmap.md`. The
+steps below are the upstream-submission mechanics referenced by its
+"Upstream submission and sync" item.
+
 ## Next steps (in order, Scott decides timing)
 
 1. **Submit an equivalent PR upstream** to taiste/harvest-mcp-server. Build
-   the upstream branch from the code commits only: this CLAUDE.md commit is
-   fork-internal and must be excluded (cherry-pick the code commits onto a
-   fresh branch cut from upstream/main). Keep the PR description generic.
+   the upstream branch from the code commits only: the CLAUDE.md and
+   docs/plans/ commits are fork-internal and must be excluded (cherry-pick
+   the code commits onto a fresh branch cut from upstream/main). Keep the PR
+   description generic.
 2. **Check periodically whether upstream merged it.** Historical review
    latency on that repo ranges from next-day to 2.5 months.
 3. **When upstream merges:** switch this checkout back to main, sync main
