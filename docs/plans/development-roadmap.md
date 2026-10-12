@@ -15,8 +15,21 @@ shapes (`read_only_mode`, `write_not_allowed`) empirically in a live MCP
 session, not just in the unit suite. Any findings that need server changes
 come back to this branch as fixes.
 
-**Status:** Ready to execute. Driven by the consuming workflow, so no plan
-file lives here; this repo's part is reacting to what validation surfaces.
+**Status:** Half done, as of 2026-10-12. The refusal half is observed live:
+the consuming workflow has seen `read_only_mode` on two
+`create_time_entry` calls (2026-08-03, 2026-08-07) and `write_not_allowed` on
+two deliberate `delete_project` refusal tests (2026-08-07). The positive half
+has not happened: the consumer has never performed a successful Harvest write,
+so `update_time_entry` and `delete_time_entry` are untested against the real
+API. All of its write plans remain proposed, none applied; its write server
+entry is disabled locally and the server runs with `HARVEST_READ_ONLY=true`.
+A 2026-10-10 status reply from this repo claimed the consumer had been using
+the tools in production; that was wrong. The positive half is gated on the
+consumer's first real write, which needs Scott present. Scott's ordering
+decision (2026-10-12): settle where the write tools live (merge to fork main,
+the branching-strategy plan, or upstream) before the consumer's first real
+writes. Driven by the consuming workflow, so no plan file lives here; this
+repo's part is reacting to what validation surfaces.
 
 ---
 
