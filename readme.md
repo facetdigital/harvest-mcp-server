@@ -16,6 +16,8 @@ The server provides the following functionality:
 ### Time Entries
 - List time entries with filtering options
 - Create new time entries
+- Update existing time entries (partial updates; providing only `task_id` re-tasks an entry without touching hours or notes)
+- Delete time entries
 - Start/stop timers
 - Query time entry details
 - Get unsubmitted timesheets (time entries not yet submitted for approval)
@@ -131,7 +133,7 @@ You can modify the server code to add more functionality or customize the existi
 
 ## Read-Only Mode
 
-You can run the server in read-only mode by setting the `HARVEST_READ_ONLY` environment variable to `true`. This disables all write operations (creating time entries, starting/stopping timers, creating/updating/deleting estimates, changing estimate state, sending estimate messages, and creating/updating/deleting projects, task assignments, and user assignments) while keeping all read operations available.
+You can run the server in read-only mode by setting the `HARVEST_READ_ONLY` environment variable to `true`. This disables all write operations (creating/updating/deleting time entries, starting/stopping timers, creating/updating/deleting estimates, changing estimate state, sending estimate messages, and creating/updating/deleting projects, task assignments, and user assignments) while keeping all read operations available. Read-only mode is enforced twice: each write tool refuses before building its request, and the shared request helper independently refuses any non-GET call.
 
 ```json
 {
@@ -155,6 +157,24 @@ You can run the server in read-only mode by setting the `HARVEST_READ_ONLY` envi
 ```
 
 When read-only mode is enabled, any attempt to call a write tool will return an error message explaining that the server is in read-only mode and how to enable write access.
+
+## Write Tool Allowlist
+
+For finer-grained control than all-or-nothing read-only mode, set the `HARVEST_WRITE_TOOLS` environment variable to a comma-separated list of write tool names. Write tools not named in the list refuse with a `write_not_allowed` error (echoing the allowed list) before making any network call; read tools are never affected. This fails closed: a write tool added to the server later is denied until you deliberately add it to your list.
+
+```json
+"env": {
+    "HARVEST_ACCOUNT_ID": "account_id",
+    "HARVEST_API_KEY": "api_key",
+    "HARVEST_WRITE_TOOLS": "create_time_entry,update_time_entry,delete_time_entry"
+}
+```
+
+Notes:
+
+- If `HARVEST_READ_ONLY` is set, it wins: all writes refuse regardless of the allowlist.
+- An unknown tool name in the list is a startup error, so a typo cannot silently reduce (or appear to reduce) your allowlist.
+- Useful for registering two server entries: a default read-only one, and a second write-enabled entry whose allowlist grants only the specific tools a trusted workflow needs.
 
 ## Security Notes
 
