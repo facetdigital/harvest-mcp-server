@@ -15,21 +15,13 @@ shapes (`read_only_mode`, `write_not_allowed`) empirically in a live MCP
 session, not just in the unit suite. Any findings that need server changes
 come back to this branch as fixes.
 
-**Status:** Half done, as of 2026-10-12. The refusal half is observed live:
-the consuming workflow has seen `read_only_mode` on two
-`create_time_entry` calls (2026-08-03, 2026-08-07) and `write_not_allowed` on
-two deliberate `delete_project` refusal tests (2026-08-07). The positive half
-has not happened: the consumer has never performed a successful Harvest write,
-so `update_time_entry` and `delete_time_entry` are untested against the real
-API. All of its write plans remain proposed, none applied; its write server
-entry is disabled locally and the server runs with `HARVEST_READ_ONLY=true`.
-A 2026-10-10 status reply from this repo claimed the consumer had been using
-the tools in production; that was wrong. The positive half is gated on the
-consumer's first real write, which needs Scott present. Scott's ordering
-decision (2026-10-12): settle where the write tools live (merge to fork main,
-the branching-strategy plan, or upstream) before the consumer's first real
-writes. Driven by the consuming workflow, so no plan file lives here; this
-repo's part is reacting to what validation surfaces.
+**Status:** Server side validated, as of 2026-11-01; the consumer's first real write is still pending.
+
+The refusal shapes are observed live in the consuming workflow: `read_only_mode` on two `create_time_entry` calls (2026-08-03, 2026-08-07) and `write_not_allowed` on two deliberate `delete_project` refusal tests (2026-08-07).
+
+The write path is validated against the real Harvest API by a smoke test run on 2026-11-01. It started the server over MCP stdio with `HARVEST_WRITE_TOOLS=create_time_entry,update_time_entry,delete_time_entry` and passed all six checks: the allowlist refused `delete_project` with no request sent; `create_time_entry` made a 0.25h entry on an internal non-billable project; `update_time_entry` changed only hours and notes, leaving project and task intact; `list_time_entries` read the updated values back; `delete_time_entry` succeeded; and the entry was gone afterward. Harvest's DELETE returned 200 with the deleted entry as the body, not an empty body, so the server's empty-body fallback was not exercised. The script is `scripts/smoke_time_entry_writes.py`, kept local-only through `.git/info/exclude` (Scott's call, 2026-11-01) until the branching-strategy plan gives fork-private files a home. It takes `HARVEST_ACCOUNT_ID` and `HARVEST_API_KEY` from the environment plus `--project-id` and `--task-id`.
+
+Still open: the consumer has never performed a successful Harvest write. All of its write plans remain proposed, none applied; its write server entry is disabled locally and the server runs with `HARVEST_READ_ONLY=true`. A 2026-10-10 status reply from this repo claimed the consumer had been using the tools in production; that was wrong. Its first real write needs Scott present. Scott's ordering decision (2026-10-12): settle where the write tools live (merge to fork main, the branching-strategy plan, or upstream) before the consumer's first real writes. Driven by the consuming workflow, so no plan file lives here; this repo's part is reacting to what validation surfaces.
 
 ---
 
