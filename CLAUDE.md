@@ -1,7 +1,6 @@
 # harvest-mcp-server (facetdigital fork)
 
-This is Facet Digital's fork of taiste/harvest-mcp-server. Upstream remote is
-`taiste`, origin is the fork.
+This is Facet Digital's fork of taiste/harvest-mcp-server. Upstream remote is `upstream`, origin is the fork.
 
 ## Current operating state (2026-08-07)
 
